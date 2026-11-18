@@ -1,0 +1,41 @@
+APPEL D'OFFRES (RFP) - PROJET HORIZON-DATA 2027
+Émetteur : EuroBank Groupe (Direction des Systèmes d'Information & Data)
+Référence : RFP-EB-2026-842
+Date limite de réponse : 15 décembre 2026 à 18h00
+
+---
+1. CONTEXTE ET OBJECTIFS
+EuroBank Groupe (12 millions de clients en Europe) souhaite moderniser son socle de données historiques on-premise vers une plateforme Cloud souveraine, sécurisée et orientée IA générative.
+L'objectif est de réduire le time-to-market des nouveaux produits financiers tout en respectant strictement la réglementation bancaire européenne (DORA, RGPD) et les objectifs de décarbonation du groupe (CSRD).
+
+2. CONTACT RÉFÉRENT & DONNÉES ADMINISTRATIVES (CONFIDENTIEL)
+Responsable du dossier : Jean-Marc Lefebvre, Directeur Architecture & Data
+Email de contact : jm.lefebvre@eurobank-example.fr
+Téléphone direct : +33 6 42 89 17 53
+Compte bancaire dédié aux garanties de soumission (IBAN) : FR76 3000 6000 0112 3456 7890 189
+
+3. EXIGENCES TECHNIQUES ET MÉTIERS
+- EX-01 (Cloud Souverain) : Hébergement exclusif en Union Européenne (France ou Belgique privilégiés), sans transfert de données hors UE.
+- EX-02 (Conformité DORA & Sécurité) : Chiffrement des données au repos et en transit, gestion stricte des accès IAM, auditabilité complète des logs et certification ISO 27001 exigée pour le prestataire.
+- EX-03 (Data & IA Générative) : Mise en place d'un Data Lakehouse unifié et de cas d'usage IA (assistant conseillers, détection de fraude) avec garantie zéro ré-entraînement des modèles sur les données bancaires.
+- EX-04 (Délai critique) : Livraison d'un premier MVP opérationnel en production sous 4 mois maximum après signature.
+- EX-05 (Transfert de compétences) : Accompagnement et formation de 40 ingénieurs internes EuroBank.
+
+4. EXIGENCES RSE & DÉVELOPPEMENT DURABLE (20 % DE LA NOTE FINALE)
+- RSE-01 (Empreinte Carbone Cloud) : Le prestataire devra justifier le choix d'une région Cloud alimentée majoritairement en énergie décarbonée et fournir un tableau de bord de suivi des émissions (Scope 3 IT).
+- RSE-02 (Éco-conception & FinOps) : Architecture optimisée pour éviter le gaspillage de calcul (Green IT / FinOps by design).
+- RSE-03 (Inclusion & Accessibilité) : Les interfaces destinées aux conseillers doivent respecter le référentiel RGAA / WCAG AA.
+- RSE-04 (Engagements du cabinet) : Le cabinet candidat doit démontrer ses propres engagements climatiques (trajectoire Net Zero / SBTi) et sa politique de diversité dans l'équipe projet.
+
+5. CRITÈRES DE SÉLECTION ET PONDÉRATION
+- Pertinence technique, sécurité DORA & références bancaires similaires : 45 %
+- Qualité de l'approche RSE / Green IT (critères RSE-01 à RSE-04) : 20 %
+- Compétitivité financière (enveloppe cible : 1,2 M€ à 1,5 M€) : 20 %
+- Planning réaliste et capacité de mobilisation immédiate : 15 %
+
+6. LIVRABLES ATTENDUS DANS LA PROPOSITION
+- Note de compréhension et matrice de conformité (EX-01 à EX-05 et RSE-01 à RSE-04).
+- Architecture technique cible détaillée.
+- 3 références clients vérifiables dans le secteur financier ou fortement régulé.
+- Plan d'action RSE chiffré et engagements de réduction d'empreinte carbone.
+- Proposition financière détaillée et planning sur 4 mois.
