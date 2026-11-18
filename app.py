@@ -268,25 +268,38 @@ def _build_shelf_payload(
 
 def _run_pipeline(raw_rfp: str, role_key: str) -> None:
     """Execute the 5-agent pipeline on the live RFP and build the 5-project portfolio."""
-    with st.status("Running Secure Bid Squad pipeline...", expanded=False) as status:
-        st.write("0. Cloud DLP Security Airlock...")
+    progress_bar = st.progress(0, text="Initialisation de Secure Bid Squad...")
+    with st.status("Exécution du pipeline Secure Bid Squad...", expanded=True) as status:
+        progress_bar.progress(10, text="Étape 0/5 — 🛡️ Sas Sécurité Cloud DLP...")
+        st.write("⏳ **0/5** — 🛡️ Sas Sécurité Cloud DLP (masquage PII)...")
         dlp_res = security_dlp.mask_sensitive_data(raw_rfp)
         masked_rfp = dlp_res["masked_text"]
+        st.write(f"✅ **0/5** — Cloud DLP : {dlp_res.get('findings_count', 0)} donnée(s) sensible(s) masquée(s)")
 
-        st.write("1. Strategist Analyst (Go/No-Go)...")
+        progress_bar.progress(25, text="Étape 1/5 — 🧠 Agent Analyste Stratège (Go/No-Go)...")
+        st.write("⏳ **1/5** — 🧠 Analyste Stratège (exigences, risques, Go/No-Go)...")
         analyst_res = agents.run_analyst(masked_rfp)
+        st.write(f"✅ **1/5** — Analyste terminé (Décision : {analyst_res.get('decision', 'GO')})")
 
-        st.write("2. Knowledge Hunter (IAM Chinese Wall)...")
+        progress_bar.progress(45, text="Étape 2/5 — 🔍 Agent Chasseur de Savoir (IAM Chinese Wall)...")
+        st.write("⏳ **2/5** — 🔍 Chasseur de Savoir (recherche cas clients & IAM)...")
         knowledge_res = agents.run_knowledge(masked_rfp, role_key)
+        st.write(f"✅ **2/5** — {len(knowledge_res)} cas client(s) sourcé(s)")
 
-        st.write("3. ESG / CSRD Auditor...")
+        progress_bar.progress(60, text="Étape 3/5 — 🌱 Agent Auditeur RSE / ESG...")
+        st.write("⏳ **3/5** — 🌱 Auditeur RSE / ESG (CSRD, Green Cloud)...")
         rse_res = agents.run_rse(masked_rfp)
+        st.write(f"✅ **3/5** — Score RSE : {rse_res.get('score_rse', 'N/A')}/100")
 
-        st.write("4. Proposal Architect...")
+        progress_bar.progress(80, text="Étape 4/5 — ✍️ Agent Architecte Rédacteur...")
+        st.write("⏳ **4/5** — ✍️ Architecte Rédacteur (matrice de conformité & propale)...")
         writer_res = agents.run_writer(masked_rfp, analyst_res, knowledge_res, rse_res)
+        st.write("✅ **4/5** — Brouillon de propale généré")
 
-        st.write("5. Red-Team Devil's Advocate...")
+        progress_bar.progress(92, text="Étape 5/5 — 😈 Agent Red-Team (Audit acheteur)...")
+        st.write("⏳ **5/5** — 😈 Avocat du Diable / Red-Team (notation & failles)...")
         redteam_res = agents.run_redteam(writer_res.get("proposal_md", ""), masked_rfp)
+        st.write(f"✅ **5/5** — Audit Red-Team terminé ({redteam_res.get('note_sur_20', 'N/A')}/20)")
 
         live_project_payload = {
             "raw_rfp": raw_rfp,
@@ -299,11 +312,13 @@ def _run_pipeline(raw_rfp: str, role_key: str) -> None:
         }
         portfolio = agents.build_project_portfolio(live_project_payload, role_key)
 
+        progress_bar.progress(100, text="✅ Pipeline Secure Bid Squad terminé !")
         status.update(
-            label="Secure Bid Squad pipeline complete — 5 bid projects ready",
+            label="✅ Pipeline Secure Bid Squad terminé — 5 projets prêts",
             state="complete",
             expanded=False,
         )
+    progress_bar.empty()
 
     st.session_state["raw_rfp"] = raw_rfp
     st.session_state["masked_rfp"] = masked_rfp
