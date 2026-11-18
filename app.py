@@ -29,7 +29,7 @@ def _inject_supabase_css() -> None:
             color: {t["text"]};
           }}
           .block-container {{
-            padding-top: 1.0rem;
+            padding-top: 3.2rem;
             padding-bottom: 1rem;
             padding-left: 1.5rem;
             padding-right: 1.5rem;
