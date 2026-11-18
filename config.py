@@ -1,10 +1,17 @@
 """Centralized configuration and constants for Deloitte Secure Bid Squad."""
 
+import os
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 APP_TITLE = "DELOITTE // SECURE BID SQUAD"
 APP_SUBTITLE = "Augmented Bid War Room · Security by Design"
-GCP_REGION = "europe-west9"
+GCP_REGION = os.getenv("GOOGLE_CLOUD_LOCATION", "europe-west9")
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -14,7 +21,7 @@ SAMPLE_RFP_PATH = DATA_DIR / "sample_rfp.txt"
 ENV_GCP_PROJECT = "GCP_PROJECT_ID"
 ENV_GOOGLE_CLOUD_PROJECT = "GOOGLE_CLOUD_PROJECT"
 ENV_GEMINI_API_KEY = "GEMINI_API_KEY"
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-4-hydrogen")
 
 CASE_FILE_EXT = ".md"
 CHARTE_RSE_FILENAME = "charte_rse.md"

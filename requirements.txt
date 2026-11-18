@@ -2,3 +2,5 @@ streamlit>=1.38.0
 google-cloud-dlp>=3.18.0
 google-genai>=0.3.0
 pypdf>=4.0.0
+python-dotenv>=1.0.1
+
