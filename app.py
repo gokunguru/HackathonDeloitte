@@ -291,16 +291,14 @@ def _render_pipeline_loader(
             icon = f"0{idx}"
 
         cards_html.append(
-            f"""
-            <div class="pipe-step {state_cls}">
-              <div class="pipe-step-top">
-                <span class="pipe-icon">{icon}</span>
-                <span class="pipe-badge">{badge}</span>
-              </div>
-              <div class="pipe-title">{step['title']}</div>
-              <div class="pipe-sub">{step['desc']}</div>
-            </div>
-            """
+            f'<div class="pipe-step {state_cls}">'
+            f'<div class="pipe-step-top">'
+            f'<span class="pipe-icon">{icon}</span>'
+            f'<span class="pipe-badge">{badge}</span>'
+            f'</div>'
+            f'<div class="pipe-title">{step["title"]}</div>'
+            f'<div class="pipe-sub">{step["desc"]}</div>'
+            f'</div>'
         )
 
     slot.markdown(
