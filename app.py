@@ -266,59 +266,225 @@ def _build_shelf_payload(
     }
 
 
+def _render_pipeline_loader(
+    slot: Any,
+    active_idx: int,
+    pct: int,
+    headline: str,
+    steps_meta: list[dict[str, str]],
+) -> None:
+    """Render an animated dark-mode step-by-step pipeline tracker in English."""
+    t = config.SUPABASE_THEME
+    cards_html = []
+    for idx, step in enumerate(steps_meta):
+        if idx < active_idx:
+            state_cls = "done"
+            badge = step.get("result") or "DONE"
+            icon = "✓"
+        elif idx == active_idx:
+            state_cls = "active"
+            badge = "RUNNING"
+            icon = "<span class='pulse-dot'></span>"
+        else:
+            state_cls = "pending"
+            badge = "QUEUED"
+            icon = f"0{idx}"
+
+        cards_html.append(
+            f"""
+            <div class="pipe-step {state_cls}">
+              <div class="pipe-step-top">
+                <span class="pipe-icon">{icon}</span>
+                <span class="pipe-badge">{badge}</span>
+              </div>
+              <div class="pipe-title">{step['title']}</div>
+              <div class="pipe-sub">{step['desc']}</div>
+            </div>
+            """
+        )
+
+    slot.markdown(
+        f"""
+        <style>
+          @keyframes pulseGlow {{
+            0%, 100% {{ box-shadow: 0 0 0 0 rgba(62, 207, 142, 0.55); transform: scale(1); }}
+            50% {{ box-shadow: 0 0 0 7px rgba(62, 207, 142, 0); transform: scale(1.15); }}
+          }}
+          @keyframes shimmerBar {{
+            0% {{ background-position: -200% 0; }}
+            100% {{ background-position: 200% 0; }}
+          }}
+          .pipe-shell {{
+            background: {t["card"]};
+            border: 1px solid {t["border"]};
+            border-radius: 8px;
+            padding: 18px 20px;
+            margin-bottom: 14px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          }}
+          .pipe-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+          }}
+          .pipe-headline {{
+            color: {t["text"]};
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+          }}
+          .pipe-pct {{
+            color: {t["accent"]};
+            font-size: 13px;
+            font-weight: 700;
+          }}
+          .pipe-track {{
+            width: 100%;
+            height: 6px;
+            background: #111315;
+            border-radius: 999px;
+            overflow: hidden;
+            margin-bottom: 16px;
+          }}
+          .pipe-fill {{
+            height: 100%;
+            width: {pct}%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, {t["accent"]}, #6ee7b7, {t["accent"]});
+            background-size: 200% 100%;
+            animation: shimmerBar 1.6s linear infinite;
+            transition: width 0.45s ease;
+          }}
+          .pipe-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+          }}
+          .pipe-step {{
+            background: #141618;
+            border: 1px solid {t["border"]};
+            border-radius: 6px;
+            padding: 10px 12px;
+            transition: all 0.25s ease;
+          }}
+          .pipe-step.active {{
+            border-color: {t["accent"]};
+            background: rgba(62, 207, 142, 0.07);
+          }}
+          .pipe-step.done {{
+            border-color: rgba(62, 207, 142, 0.35);
+          }}
+          .pipe-step.pending {{
+            opacity: 0.45;
+          }}
+          .pipe-step-top {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+          }}
+          .pipe-icon {{
+            color: {t["accent"]};
+            font-size: 12px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+          }}
+          .pulse-dot {{
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: {t["accent"]};
+            display: inline-block;
+            animation: pulseGlow 1.3s ease-in-out infinite;
+          }}
+          .pipe-badge {{
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: rgba(62, 207, 142, 0.12);
+            color: {t["accent"]};
+            font-weight: 700;
+          }}
+          .pipe-step.pending .pipe-badge {{
+            background: #1f2326;
+            color: {t["muted"]};
+          }}
+          .pipe-title {{
+            color: {t["text"]};
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 2px;
+          }}
+          .pipe-sub {{
+            color: {t["muted"]};
+            font-size: 11px;
+          }}
+        </style>
+        <div class="pipe-shell">
+          <div class="pipe-header">
+            <span class="pipe-headline">⚡ {headline}</span>
+            <span class="pipe-pct">{pct}%</span>
+          </div>
+          <div class="pipe-track"><div class="pipe-fill"></div></div>
+          <div class="pipe-grid">{"".join(cards_html)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _run_pipeline(raw_rfp: str, role_key: str) -> None:
     """Execute the 5-agent pipeline on the live RFP and build the 5-project portfolio."""
-    progress_bar = st.progress(0, text="Initialisation de Secure Bid Squad...")
-    with st.status("Exécution du pipeline Secure Bid Squad...", expanded=True) as status:
-        progress_bar.progress(10, text="Étape 0/5 — 🛡️ Sas Sécurité Cloud DLP...")
-        st.write("⏳ **0/5** — 🛡️ Sas Sécurité Cloud DLP (masquage PII)...")
-        dlp_res = security_dlp.mask_sensitive_data(raw_rfp)
-        masked_rfp = dlp_res["masked_text"]
-        st.write(f"✅ **0/5** — Cloud DLP : {dlp_res.get('findings_count', 0)} donnée(s) sensible(s) masquée(s)")
+    steps = [
+        {"title": "00 · Security Airlock", "desc": "Google Cloud DLP PII masking"},
+        {"title": "01 · Strategist Analyst", "desc": "Go / No-Go & risk extraction"},
+        {"title": "02 · Knowledge Hunter", "desc": "IAM Chinese Wall case search"},
+        {"title": "03 · ESG / CSRD Auditor", "desc": "Green Cloud & sustainability score"},
+        {"title": "04 · Proposal Architect", "desc": "Compliance matrix & draft"},
+        {"title": "05 · Red-Team Advocate", "desc": "Buyer stress-test & gap audit"},
+    ]
+    loader_slot = st.empty()
 
-        progress_bar.progress(25, text="Étape 1/5 — 🧠 Agent Analyste Stratège (Go/No-Go)...")
-        st.write("⏳ **1/5** — 🧠 Analyste Stratège (exigences, risques, Go/No-Go)...")
-        analyst_res = agents.run_analyst(masked_rfp)
-        st.write(f"✅ **1/5** — Analyste terminé (Décision : {analyst_res.get('decision', 'GO')})")
+    _render_pipeline_loader(loader_slot, 0, 10, "Securing RFP via Google Cloud DLP...", steps)
+    dlp_res = security_dlp.mask_sensitive_data(raw_rfp)
+    masked_rfp = dlp_res["masked_text"]
+    steps[0]["result"] = f"{dlp_res.get('findings_count', 0)} PII MASKED"
 
-        progress_bar.progress(45, text="Étape 2/5 — 🔍 Agent Chasseur de Savoir (IAM Chinese Wall)...")
-        st.write("⏳ **2/5** — 🔍 Chasseur de Savoir (recherche cas clients & IAM)...")
-        knowledge_res = agents.run_knowledge(masked_rfp, role_key)
-        st.write(f"✅ **2/5** — {len(knowledge_res)} cas client(s) sourcé(s)")
+    _render_pipeline_loader(loader_slot, 1, 26, "Agent 01 · Evaluating Go / No-Go & Risks...", steps)
+    analyst_res = agents.run_analyst(masked_rfp)
+    steps[1]["result"] = f"{analyst_res.get('decision', 'GO')} · {analyst_res.get('score_opportunite', 80)}/100"
 
-        progress_bar.progress(60, text="Étape 3/5 — 🌱 Agent Auditeur RSE / ESG...")
-        st.write("⏳ **3/5** — 🌱 Auditeur RSE / ESG (CSRD, Green Cloud)...")
-        rse_res = agents.run_rse(masked_rfp)
-        st.write(f"✅ **3/5** — Score RSE : {rse_res.get('score_rse', 'N/A')}/100")
+    _render_pipeline_loader(loader_slot, 2, 44, "Agent 02 · Querying Deloitte Case Base (IAM)...", steps)
+    knowledge_res = agents.run_knowledge(masked_rfp, role_key)
+    steps[2]["result"] = f"{len(knowledge_res)} CASES"
 
-        progress_bar.progress(80, text="Étape 4/5 — ✍️ Agent Architecte Rédacteur...")
-        st.write("⏳ **4/5** — ✍️ Architecte Rédacteur (matrice de conformité & propale)...")
-        writer_res = agents.run_writer(masked_rfp, analyst_res, knowledge_res, rse_res)
-        st.write("✅ **4/5** — Brouillon de propale généré")
+    _render_pipeline_loader(loader_slot, 3, 62, "Agent 03 · Auditing CSRD & Green Cloud Criteria...", steps)
+    rse_res = agents.run_rse(masked_rfp)
+    steps[3]["result"] = f"ESG {rse_res.get('score_rse', 'N/A')}/100"
 
-        progress_bar.progress(92, text="Étape 5/5 — 😈 Agent Red-Team (Audit acheteur)...")
-        st.write("⏳ **5/5** — 😈 Avocat du Diable / Red-Team (notation & failles)...")
-        redteam_res = agents.run_redteam(writer_res.get("proposal_md", ""), masked_rfp)
-        st.write(f"✅ **5/5** — Audit Red-Team terminé ({redteam_res.get('note_sur_20', 'N/A')}/20)")
+    _render_pipeline_loader(loader_slot, 4, 80, "Agent 04 · Drafting Tailored Proposal & Matrix...", steps)
+    writer_res = agents.run_writer(masked_rfp, analyst_res, knowledge_res, rse_res)
+    steps[4]["result"] = "DRAFT READY"
 
-        live_project_payload = {
-            "raw_rfp": raw_rfp,
-            "dlp_res": dlp_res,
-            "analyst_res": analyst_res,
-            "knowledge_res": knowledge_res,
-            "rse_res": rse_res,
-            "writer_res": writer_res,
-            "redteam_res": redteam_res,
-        }
-        portfolio = agents.build_project_portfolio(live_project_payload, role_key)
+    _render_pipeline_loader(loader_slot, 5, 93, "Agent 05 · Running Red-Team Buyer Stress Test...", steps)
+    redteam_res = agents.run_redteam(writer_res.get("proposal_md", ""), masked_rfp)
+    steps[5]["result"] = f"{redteam_res.get('note_sur_20', 'N/A')}/20"
 
-        progress_bar.progress(100, text="✅ Pipeline Secure Bid Squad terminé !")
-        status.update(
-            label="✅ Pipeline Secure Bid Squad terminé — 5 projets prêts",
-            state="complete",
-            expanded=False,
-        )
-    progress_bar.empty()
+    live_project_payload = {
+        "raw_rfp": raw_rfp,
+        "dlp_res": dlp_res,
+        "analyst_res": analyst_res,
+        "knowledge_res": knowledge_res,
+        "rse_res": rse_res,
+        "writer_res": writer_res,
+        "redteam_res": redteam_res,
+    }
+    portfolio = agents.build_project_portfolio(live_project_payload, role_key)
+
+    _render_pipeline_loader(loader_slot, 6, 100, "Secure Bid Squad Pipeline Complete", steps)
+    loader_slot.empty()
 
     st.session_state["raw_rfp"] = raw_rfp
     st.session_state["masked_rfp"] = masked_rfp
