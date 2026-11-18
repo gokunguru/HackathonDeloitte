@@ -1,160 +1,409 @@
-from pathlib import Path
+"""Main Streamlit application for Deloitte Secure Bid Squad."""
+
+from io import BytesIO
+from typing import Any
+
 import streamlit as st
+import streamlit.components.v1 as components
 
-from core_agents import run_analyst, run_redteam, run_writer
+import agents
+import config
+import security_dlp
+import shelf_component
 
-DATA_DIR = Path(__file__).parent / "data"
-
-try:
-    from security_dlp import mask_sensitive_data
-except ImportError:
-    def mask_sensitive_data(text: str) -> dict:
-        return {"masked_text": text, "findings_count": 0, "details": []}
-
-try:
-    from rse_agent import run_knowledge, run_rse
-except ImportError:
-    def run_knowledge(masked_rfp: str, user_role: str) -> list[dict]:
-        cases_dir = DATA_DIR / "cases"
-        results = []
-        if cases_dir.exists():
-            for md_file in sorted(cases_dir.glob("case_*.md")):
-                content = md_file.read_text(encoding="utf-8")
-                if "Restricted_Defense" in content and user_role != "Restricted_Defense":
-                    continue
-                lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
-                titre = lines[0].lstrip("# ").strip() if lines else md_file.stem
-                secteur = next((ln.split(":**", 1)[1].strip() for ln in lines if "Secteur :" in ln), "Conseil")
-                client = next((ln.split(":**", 1)[1].strip() for ln in lines if "Client (anonymisé) :" in ln), "Client anonymisé")
-                results.append({
-                    "titre": titre,
-                    "client_anonymise": client,
-                    "secteur": secteur,
-                    "resume": " ".join(lines[6:10])[:260] + "...",
-                    "source_file": md_file.name,
-                })
-        return results[:3]
-
-    def run_rse(masked_rfp: str) -> dict:
-        return {
-            "score_rse": 85,
-            "criteres_detectes": ["Hébergement bas carbone (CSRD)", "FinOps / Green IT", "Accessibilité RGAA"],
-            "arguments_deloitte_green_cloud": [
-                "Déploiement sur Google Cloud europe-west9 (Paris) bas carbone.",
-                "Suivi Scope 3 via Google Cloud Carbon Footprint & engagements SBTi Deloitte (WorldClimate).",
-            ],
-        }
-
-
-st.set_page_config(page_title="Deloitte Secure Bid Squad", page_icon="🛡️", layout="wide")
-st.title("🛡️ Deloitte Secure Bid Squad")
-st.caption("Équipe augmentée par Agentic AI — Sécurité by Design (Cloud DLP + Vertex AI)")
-
-sample_rfp_path = DATA_DIR / "sample_rfp.txt"
-default_rfp = (
-    sample_rfp_path.read_text(encoding="utf-8")
-    if sample_rfp_path.exists()
-    else (
-        "Objet : Migration Data & Cloud d'une banque de détail vers Google Cloud (europe-west9).\n"
-        "Délai : 9 mois. Budget : 1,8 M€.\n"
-        "Exigences : Zéro fuite de données (RGPD, DORA), critère RSE 20%, références bancaires."
-    )
+st.set_page_config(
+    page_title="Deloitte Secure Bid Squad",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-with st.sidebar:
-    st.header("Paramètres")
-    user_role = st.selectbox(
-        "Profil utilisateur (IAM / Chinese Walls)",
-        ["Consulting_Banque", "Manager", "Partner", "Restricted_Defense"],
+
+def _inject_supabase_css() -> None:
+    """Apply Supabase Dark Precision styling to Streamlit chrome."""
+    t = config.SUPABASE_THEME
+    st.markdown(
+        f"""
+        <style>
+          .stApp {{
+            background-color: {t["bg"]};
+            color: {t["text"]};
+          }}
+          .block-container {{
+            padding-top: 1.0rem;
+            padding-bottom: 1rem;
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+            max-width: 100%;
+          }}
+          section[data-testid="stSidebar"] {{
+            background-color: {t["card"]};
+            border-right: 1px solid {t["border"]};
+          }}
+          section[data-testid="stSidebar"] .stMarkdown,
+          section[data-testid="stSidebar"] label {{
+            color: {t["text"]};
+          }}
+          .stButton > button[kind="primary"] {{
+            background-color: {t["accent"]};
+            color: #0d1612;
+            border: 1px solid {t["accent"]};
+            font-weight: 700;
+            border-radius: 4px;
+          }}
+          .stButton > button[kind="primary"]:hover {{
+            background-color: {t["mint"]};
+            border-color: {t["mint"]};
+            color: #0d1612;
+          }}
+          .dlp-banner {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            background: {t["card"]};
+            border: 1px solid {t["border"]};
+            border-left: 3px solid {t["accent"]};
+            border-radius: 4px;
+            padding: 10px 16px;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 13px;
+            color: {t["text"]};
+          }}
+          .dlp-badge {{
+            background: rgba(62, 207, 142, 0.12);
+            border: 1px solid rgba(62, 207, 142, 0.4);
+            color: {t["accent"]};
+            padding: 3px 9px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+          }}
+          .agent-progress-strip {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            background: {t["card"]};
+            border: 1px solid {t["border"]};
+            border-radius: 4px;
+            padding: 7px 14px;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px;
+          }}
+          .agent-step-pill {{
+            color: {t["accent"]};
+            background: rgba(62, 207, 142, 0.08);
+            border: 1px solid rgba(62, 207, 142, 0.3);
+            padding: 2px 8px;
+            border-radius: 3px;
+          }}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
-    uploaded_file = st.file_uploader("Déposer un RFP (.txt ou .pdf)", type=["txt", "pdf"])
-    rfp_text = st.text_area("Ou coller / modifier le texte du RFP :", value=default_rfp, height=220)
-    launch = st.button("🚀 Lancer Secure Bid Squad", type="primary", use_container_width=True)
 
-if uploaded_file is not None:
-    if uploaded_file.name.endswith(".pdf"):
-        from pypdf import PdfReader
 
-        reader = PdfReader(uploaded_file)
-        rfp_text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    else:
-        rfp_text = uploaded_file.read().decode("utf-8", errors="ignore")
+def _extract_uploaded_text(uploaded_file: Any) -> str:
+    """Extract UTF-8 text from an uploaded .txt or .pdf file."""
+    if uploaded_file is None:
+        return ""
+    filename = (uploaded_file.name or "").lower()
+    raw_bytes = uploaded_file.getvalue()
+    if filename.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader  # type: ignore
 
-if launch and rfp_text.strip():
-    progress = st.progress(0, text="0. Sas Sécurité Cloud DLP en cours...")
-    dlp_out = mask_sensitive_data(rfp_text)
-    st.success(f"🛡️ Cloud DLP : {dlp_out.get('findings_count', 0)} donnée(s) sensible(s) masquée(s)")
+            reader = PdfReader(BytesIO(raw_bytes))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            return "\n".join(pages).strip()
+        except Exception as exc:
+            st.warning(f"Partial PDF extraction ({exc}). Falling back to raw UTF-8 decode.")
+            return raw_bytes.decode("utf-8", errors="ignore")
+    return raw_bytes.decode("utf-8", errors="ignore")
 
-    progress.progress(20, text="🧠 Agent 1 — Analyse Stratégique (Go / No-Go)...")
-    analyst_out = run_analyst(dlp_out["masked_text"])
 
-    progress.progress(45, text="🔍 Agent 2 & 🌱 Agent 3 — Cas Clients & Audit RSE...")
-    cases_out = run_knowledge(dlp_out["masked_text"], user_role)
-    rse_out = run_rse(dlp_out["masked_text"])
+def _load_sample_rfp() -> str:
+    """Load the built-in sample RFP text."""
+    if config.SAMPLE_RFP_PATH.exists():
+        return config.SAMPLE_RFP_PATH.read_text(encoding="utf-8")
+    return (
+        "RFP: Sovereign Low-Carbon Data & AI Platform (1.8M EUR, SLA 99.95%, "
+        "europe-west9 region, CSRD 30% weighting)."
+    )
 
-    progress.progress(75, text="✍️ Agent 4 — Rédaction de la propale...")
-    draft_md = run_writer(dlp_out["masked_text"], analyst_out, cases_out, rse_out)
 
-    progress.progress(90, text="😈 Agent 5 — Audit Red-Team...")
-    redteam_out = run_redteam(draft_md, analyst_out.get("exigences", []))
-    progress.progress(100, text="✅ Analyse complète terminée !")
+def _normalize_project(proj: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a portfolio project entry into the schema consumed by shelf_component."""
+    dlp_res = proj.get("dlp_res", {})
+    analyst_res = proj.get("analyst_res", {})
+    knowledge_res = proj.get("knowledge_res", {})
+    rse_res = proj.get("rse_res", {})
+    writer_res = proj.get("writer_res", {})
+    redteam_res = proj.get("redteam_res", {})
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "1. Go / No-Go",
-        "2. Cas Clients",
-        "3. Score RSE",
-        "4. Propale Générée",
-        "5. Audit Red-Team",
-    ])
-
-    with tab1:
-        st.metric("Score Go / No-Go", f"{analyst_out.get('score_go_nogo', 0)} / 100")
-        st.write(analyst_out.get("resume", ""))
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Exigences clés")
-            for ex in analyst_out.get("exigences", []):
-                st.markdown(f"- {ex}")
-        with col2:
-            st.subheader("Risques identifiés")
-            for r in analyst_out.get("risques", []):
-                st.markdown(f"- {r}")
-
-    with tab2:
-        for c in cases_out:
-            with st.expander(f"📁 {c.get('titre', 'Cas client')} — {c.get('client_anonymise', '')}"):
-                st.write(f"**Secteur :** {c.get('secteur', '')}")
-                st.write(c.get("resume", ""))
-                st.caption(f"Source : `{c.get('source_file', '')}`")
-
-    with tab3:
-        score_rse = int(rse_out.get("score_rse", 0))
-        st.metric("Score RSE / ESG", f"{score_rse} / 100")
-        st.progress(min(max(score_rse, 0), 100))
-        st.subheader("Critères détectés")
-        for cr in rse_out.get("criteres_detectes", []):
-            st.markdown(f"- {cr}")
-        st.subheader("Arguments Deloitte Green Cloud")
-        for arg in rse_out.get("arguments_deloitte_green_cloud", []):
-            st.markdown(f"- {arg}")
-
-    with tab4:
-        st.download_button(
-            "⬇️ Télécharger la propale (.md)",
-            data=draft_md,
-            file_name="propale_deloitte.md",
-            mime="text/markdown",
+    reqs = [
+        {"title": pt, "priority": "STRATEGIC", "status": "Deloitte Aligned"}
+        for pt in analyst_res.get("points_forts", [])
+    ]
+    if analyst_res.get("budget_detecte"):
+        reqs.append(
+            {
+                "title": f"Target Budget: {analyst_res['budget_detecte']}",
+                "priority": "FINOPS",
+                "status": analyst_res.get("delai_cle", "Scoped"),
+            }
         )
-        st.markdown(draft_md)
 
-    with tab5:
-        st.metric("Note Red-Team", f"{redteam_out.get('note_sur_20', 0)} / 20")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Points forts")
-            for pf in redteam_out.get("points_forts", []):
-                st.markdown(f"- ✅ {pf}")
-        with col2:
-            st.subheader("Failles à corriger")
-            for fa in redteam_out.get("failles_a_corriger", []):
-                st.markdown(f"- ⚠️ {fa}")
+    risks = [
+        {
+            "title": r.get("risque", ""),
+            "severity": r.get("niveau", "Medium"),
+            "mitigation": r.get("mitigation", ""),
+        }
+        for r in analyst_res.get("risques", [])
+    ]
+
+    case_items = [
+        {
+            "title": c.get("titre", "Client Case"),
+            "client": c.get("client_anonymise", "Confidential Client"),
+            "sector": c.get("secteur", ""),
+            "summary": c.get("resume", ""),
+            "source": c.get("source_file", ""),
+            "impact": f"{c.get('client_anonymise', '')} · Verified reference",
+        }
+        for c in knowledge_res.get("cases", [])
+    ]
+
+    low_carbon_args = list(rse_res.get("actions_green_it", []))
+    if rse_res.get("intensite_carbone"):
+        low_carbon_args.insert(0, f"Carbon intensity: {rse_res['intensite_carbone']}")
+    if rse_res.get("gain_carbone_estime"):
+        low_carbon_args.insert(1, f"Estimated impact: {rse_res['gain_carbone_estime']}")
+
+    vulnerabilities = []
+    for idx, faille in enumerate(redteam_res.get("failles_detectees", []), start=1):
+        sev = str(faille.get("severite", "Minor"))
+        default_gain = 10 if "maj" in sev.lower() or "high" in sev.lower() or "crit" in sev.lower() else 6
+        gain = int(faille.get("points_gain", faille.get("penalty", default_gain)))
+        patch_text = faille.get("patch_text", faille.get("recommandation", "Contractual clause added."))
+        vulnerabilities.append(
+            {
+                "id": faille.get("id", f"GAP-{idx:02d}"),
+                "title": faille.get("point", f"Finding #{idx}"),
+                "severity": sev,
+                "points_gain": gain,
+                "penalty": gain,
+                "critique": faille.get("point", ""),
+                "patch_text": patch_text,
+            }
+        )
+
+    return {
+        "id": proj.get("id", "proj_live"),
+        "code": proj.get("code", "PROJ-LIVE"),
+        "badge": proj.get("badge", "LIVE RFP"),
+        "title": proj.get("title", "Sovereign Bid"),
+        "client": proj.get("client", "Enterprise Client"),
+        "sector": proj.get("sector", "Public Sector"),
+        "budget": proj.get("budget", "€1.8M"),
+        "deadline": proj.get("deadline", "SLA 99.95%"),
+        "year": proj.get("year", "2026"),
+        "is_locked": bool(proj.get("is_locked", False)),
+        "dlp": {
+            "masked_count": dlp_res.get("findings_count", 0),
+            "details": dlp_res.get("details", []),
+        },
+        "go_nogo": {
+            "score": analyst_res.get("score_opportunite", 82),
+            "decision": analyst_res.get("decision", "GO"),
+            "summary": analyst_res.get("synthese", ""),
+            "requirements": reqs,
+            "risks": risks,
+        },
+        "cases": {
+            "items": case_items,
+            "blocked_count": knowledge_res.get("blocked_count", 0),
+            "blocked_sectors": knowledge_res.get("blocked_sectors", []),
+        },
+        "rse": {
+            "score": rse_res.get("score_esg", 88),
+            "summary": rse_res.get("synthese", ""),
+            "csrd_criteria": rse_res.get("conformite_csrd", []),
+            "low_carbon_args": low_carbon_args,
+            "region": config.GCP_REGION,
+        },
+        "propale": {
+            "markdown": writer_res.get("proposal_md", ""),
+            "filename": f"{str(proj.get('code', 'proposal')).lower()}_proposal.md",
+        },
+        "redteam": {
+            "initial_score": redteam_res.get("score_conformite", 74),
+            "summary": redteam_res.get("synthese", ""),
+            "controles_passes": redteam_res.get("controles_passes", []),
+            "vulnerabilities": vulnerabilities,
+        },
+    }
+
+
+def _build_shelf_payload(
+    role_key: str,
+    portfolio: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble the full 5-project shelf payload for shelf_component."""
+    role_meta = config.USER_ROLES.get(role_key, {})
+    return {
+        "role_key": role_key,
+        "role_label": role_meta.get("label", role_key),
+        "clearance": role_meta.get("clearance", "LEVEL 2"),
+        "allowed_sectors": role_meta.get("allowed_sectors", []),
+        "dimensions": config.ANALYST_DIMENSIONS,
+        "compliance_template": config.COMPLIANCE_TEMPLATE,
+        "projects": [_normalize_project(p) for p in portfolio],
+    }
+
+
+def _run_pipeline(raw_rfp: str, role_key: str) -> None:
+    """Execute the 5-agent pipeline on the live RFP and build the 5-project portfolio."""
+    with st.status("Running Secure Bid Squad pipeline...", expanded=False) as status:
+        st.write("0. Cloud DLP Security Airlock...")
+        dlp_res = security_dlp.mask_sensitive_data(raw_rfp)
+        masked_rfp = dlp_res["masked_text"]
+
+        st.write("1. Strategist Analyst (Go/No-Go)...")
+        analyst_res = agents.run_analyst(masked_rfp)
+
+        st.write("2. Knowledge Hunter (IAM Chinese Wall)...")
+        knowledge_res = agents.run_knowledge(masked_rfp, role_key)
+
+        st.write("3. ESG / CSRD Auditor...")
+        rse_res = agents.run_rse(masked_rfp)
+
+        st.write("4. Proposal Architect...")
+        writer_res = agents.run_writer(masked_rfp, analyst_res, knowledge_res, rse_res)
+
+        st.write("5. Red-Team Devil's Advocate...")
+        redteam_res = agents.run_redteam(writer_res.get("proposal_md", ""), masked_rfp)
+
+        live_project_payload = {
+            "raw_rfp": raw_rfp,
+            "dlp_res": dlp_res,
+            "analyst_res": analyst_res,
+            "knowledge_res": knowledge_res,
+            "rse_res": rse_res,
+            "writer_res": writer_res,
+            "redteam_res": redteam_res,
+        }
+        portfolio = agents.build_project_portfolio(live_project_payload, role_key)
+
+        status.update(
+            label="Secure Bid Squad pipeline complete — 5 bid projects ready",
+            state="complete",
+            expanded=False,
+        )
+
+    st.session_state["raw_rfp"] = raw_rfp
+    st.session_state["masked_rfp"] = masked_rfp
+    st.session_state["dlp_res"] = dlp_res
+    st.session_state["shelf_payload"] = _build_shelf_payload(role_key, portfolio)
+
+
+def main() -> None:
+    """Render sidebar controls, live security strip, and the 3D Bid Project Shelf."""
+    _inject_supabase_css()
+
+    with st.sidebar:
+        st.markdown(f"### {config.APP_TITLE}")
+        st.caption(config.APP_SUBTITLE)
+        st.divider()
+
+        role_keys = list(config.USER_ROLES.keys())
+        selected_role = st.selectbox(
+            "IAM Profile & Clearance",
+            options=role_keys,
+            format_func=lambda k: config.USER_ROLES[k]["label"],
+            index=0,
+        )
+        role_info = config.USER_ROLES[selected_role]
+        st.caption(
+            f"Clearance: **{role_info['clearance']}** · "
+            f"Sectors: {', '.join(role_info['allowed_sectors'])}"
+        )
+
+        st.divider()
+        use_sample = st.checkbox(
+            "Use built-in sample RFP",
+            value=True,
+        )
+        uploaded_file = st.file_uploader(
+            "Upload RFP (.txt or .pdf)",
+            type=["txt", "pdf"],
+            disabled=use_sample,
+        )
+
+        launch_clicked = st.button(
+            "Launch Secure Bid Squad",
+            type="primary",
+            use_container_width=True,
+        )
+
+    raw_rfp = _load_sample_rfp() if use_sample or uploaded_file is None else _extract_uploaded_text(uploaded_file)
+
+    if launch_clicked or "shelf_payload" not in st.session_state:
+        _run_pipeline(raw_rfp, selected_role)
+
+    shelf_payload = st.session_state["shelf_payload"]
+    dlp_res = st.session_state["dlp_res"]
+    masked_count = dlp_res.get("findings_count", 0)
+    live_proj = shelf_payload["projects"][0]
+
+    st.markdown(
+        f"""
+        <div class="dlp-banner">
+          <div>
+            <strong>Cloud DLP: {masked_count} sensitive items masked before LLM inference</strong>
+            <span style="color:{config.SUPABASE_THEME['muted']};margin-left:10px;">
+              Zero PII leakage · Region {config.GCP_REGION}
+            </span>
+          </div>
+          <span class="dlp-badge">{shelf_payload['role_label']} · {shelf_payload['clearance']}</span>
+        </div>
+        <div class="agent-progress-strip">
+          <span style="color:{config.SUPABASE_THEME['smoke']};font-weight:700;">LIVE PIPELINE:</span>
+          <span class="agent-step-pill">1. Strategist ✓</span>
+          <span class="agent-step-pill">2. Knowledge ✓</span>
+          <span class="agent-step-pill">3. ESG ✓</span>
+          <span class="agent-step-pill">4. Architect ✓</span>
+          <span class="agent-step-pill">5. Red-Team ✓</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Inspect live Cloud DLP Audit (Before / After)", expanded=False):
+        col_before, col_after = st.columns(2)
+        with col_before:
+            st.caption("Before (Raw RFP Document)")
+            st.code(st.session_state.get("raw_rfp", ""), language="text")
+        with col_after:
+            st.caption("After (De-identified stream sent to agents)")
+            st.code(st.session_state.get("masked_rfp", ""), language="text")
+        if dlp_res.get("details"):
+            st.dataframe(dlp_res["details"], use_container_width=True, hide_index=True)
+
+    shelf_html = shelf_component.render_shelf_html(shelf_payload)
+    components.html(shelf_html, height=780, scrolling=False)
+
+    st.download_button(
+        label="Download Live Proposal (.md)",
+        data=live_proj["propale"]["markdown"],
+        file_name=live_proj["propale"]["filename"],
+        mime="text/markdown",
+    )
+
+
+if __name__ == "__main__":
+    main()
