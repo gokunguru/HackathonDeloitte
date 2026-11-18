@@ -174,11 +174,13 @@ Tu dois t'appuyer UNIQUEMENT sur les éléments fournis ci-dessous (ne jamais in
 
 Structure obligatoire de la propale en Markdown :
 1. **Synthèse Exécutive** (alignée sur les enjeux du client et la valeur Deloitte)
-2. **Matrice de Conformité** (tableau Markdown : `Exigence du RFP | Réponse Deloitte | Statut`) couvrant toutes les exigences de l'Agent 1
-3. **Architecture Cible & Approche de Delivery** (incluant la mitigation des risques identifiés)
-4. **Nos Références Clients Pertinentes** (en citant explicitement les cas de l'Agent 2 et leur `source_file`)
-5. **Engagement RSE & Green Cloud** (intégrant les arguments de l'Agent 3, ex. Google Cloud `europe-west9` bas carbone)
+2. **Matrice de Conformité** (tableau Markdown : `Exigence du RFP | Réponse Deloitte | Statut`) couvrant toutes les exigences de l'Agent 1 (ex. EX-01..EX-05, RSE-01..RSE-04)
+3. **Architecture Cible & Approche de Delivery** (incluant les services GCP précis et la mitigation des risques identifiés)
+4. **Nos Références Clients Pertinentes** (en citant proprement les cas de l'Agent 2, sans afficher de nom de fichier technique `.md`)
+5. **Engagement RSE & Green Cloud** (intégrant les arguments de l'Agent 3, ex. Google Cloud `europe-west9` bas carbone, sans exposer de score interne brut)
 6. **Gouvernance, Planning & Prochaines Étapes**
+
+Règle importante : Ne laisse aucune balise technique (`[PERSON_NAME]`, `[EMAIL_ADDRESS]`, noms de fichiers `.md`) dans le texte final destiné au client ; utilise une formulation professionnelle ("À l'attention de la Direction Architecture & Data").
 """.strip()
 
     try:
@@ -319,16 +321,19 @@ def _redteam_fallback(draft_md: str, exigences: list[str]) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    sample_rfp = """
-    Objet : Appel d'offres - Migration Data & Cloud d'une banque de détail.
-    Contact : [PERSON_NAME] ([EMAIL_ADDRESS]).
-    Contexte : La banque souhaite migrer son entrepôt de données legacy vers Google Cloud
-    (région Paris europe-west9) sous 9 mois. Budget indicatif : 1,8 M€.
-    Exigences :
-    - Zéro fuite de données bancaires (conformité RGPD, DORA, chiffrement).
-    - Réduction de l'empreinte carbone de l'infrastructure (critère RSE : 20% de la note).
-    - Références similaires exigées dans le secteur bancaire européen.
-    """
+    from pathlib import Path
+
+    rfp_path = Path(__file__).parent / "data" / "sample_rfp.txt"
+    if rfp_path.exists():
+        sample_rfp = rfp_path.read_text(encoding="utf-8")
+        print(f"=== CHARGEMENT DE {rfp_path.name} ({len(sample_rfp)} caractères) ===")
+    else:
+        sample_rfp = """
+        Objet : Appel d'offres - Migration Data & Cloud d'une banque de détail.
+        Contact : [PERSON_NAME] ([EMAIL_ADDRESS]).
+        Contexte : La banque souhaite migrer son entrepôt de données legacy vers Google Cloud
+        (région Paris europe-west9) sous 9 mois. Budget indicatif : 1,8 M€.
+        """
     print("=== TEST AGENT 1 (ANALYSTE) ===")
     analyst_out = run_analyst(sample_rfp)
     print(json.dumps(analyst_out, indent=2, ensure_ascii=False))

@@ -1,6 +1,9 @@
+from pathlib import Path
 import streamlit as st
 
 from core_agents import run_analyst, run_redteam, run_writer
+
+DATA_DIR = Path(__file__).parent / "data"
 
 try:
     from security_dlp import mask_sensitive_data
@@ -12,23 +15,33 @@ try:
     from rse_agent import run_knowledge, run_rse
 except ImportError:
     def run_knowledge(masked_rfp: str, user_role: str) -> list[dict]:
-        return [
-            {
-                "titre": "Migration Data Warehouse vers BigQuery en environnement bancaire",
-                "client_anonymise": "Banque de détail européenne (Top 5)",
-                "secteur": "Banque & Assurance",
-                "resume": "Migration de 120 To en 8 mois vers europe-west9 avec conformité DORA.",
-                "source_file": "case_banque_bigquery.md",
-            }
-        ]
+        cases_dir = DATA_DIR / "cases"
+        results = []
+        if cases_dir.exists():
+            for md_file in sorted(cases_dir.glob("case_*.md")):
+                content = md_file.read_text(encoding="utf-8")
+                if "Restricted_Defense" in content and user_role != "Restricted_Defense":
+                    continue
+                lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+                titre = lines[0].lstrip("# ").strip() if lines else md_file.stem
+                secteur = next((ln.split(":**", 1)[1].strip() for ln in lines if "Secteur :" in ln), "Conseil")
+                client = next((ln.split(":**", 1)[1].strip() for ln in lines if "Client (anonymisé) :" in ln), "Client anonymisé")
+                results.append({
+                    "titre": titre,
+                    "client_anonymise": client,
+                    "secteur": secteur,
+                    "resume": " ".join(lines[6:10])[:260] + "...",
+                    "source_file": md_file.name,
+                })
+        return results[:3]
 
     def run_rse(masked_rfp: str) -> dict:
         return {
             "score_rse": 85,
-            "criteres_detectes": ["Hébergement bas carbone", "Sobriété numérique"],
+            "criteres_detectes": ["Hébergement bas carbone (CSRD)", "FinOps / Green IT", "Accessibilité RGAA"],
             "arguments_deloitte_green_cloud": [
                 "Déploiement sur Google Cloud europe-west9 (Paris) bas carbone.",
-                "Pilotage FinOps / GreenOps pour réduire l'empreinte de l'infrastructure.",
+                "Suivi Scope 3 via Google Cloud Carbon Footprint & engagements SBTi Deloitte (WorldClimate).",
             ],
         }
 
@@ -37,19 +50,25 @@ st.set_page_config(page_title="Deloitte Secure Bid Squad", page_icon="🛡️", 
 st.title("🛡️ Deloitte Secure Bid Squad")
 st.caption("Équipe augmentée par Agentic AI — Sécurité by Design (Cloud DLP + Vertex AI)")
 
-with st.sidebar:
-    st.header("Paramètres")
-    user_role = st.selectbox(
-        "Profil utilisateur (IAM / Chinese Walls)",
-        ["Manager FS (Banque)", "Consultant Tech & Cloud", "Partner Public Sector"],
-    )
-    uploaded_file = st.file_uploader("Déposer un RFP (.txt ou .pdf)", type=["txt", "pdf"])
-    default_rfp = (
+sample_rfp_path = DATA_DIR / "sample_rfp.txt"
+default_rfp = (
+    sample_rfp_path.read_text(encoding="utf-8")
+    if sample_rfp_path.exists()
+    else (
         "Objet : Migration Data & Cloud d'une banque de détail vers Google Cloud (europe-west9).\n"
         "Délai : 9 mois. Budget : 1,8 M€.\n"
         "Exigences : Zéro fuite de données (RGPD, DORA), critère RSE 20%, références bancaires."
     )
-    rfp_text = st.text_area("Ou coller le texte du RFP :", value=default_rfp, height=180)
+)
+
+with st.sidebar:
+    st.header("Paramètres")
+    user_role = st.selectbox(
+        "Profil utilisateur (IAM / Chinese Walls)",
+        ["Consulting_Banque", "Manager", "Partner", "Restricted_Defense"],
+    )
+    uploaded_file = st.file_uploader("Déposer un RFP (.txt ou .pdf)", type=["txt", "pdf"])
+    rfp_text = st.text_area("Ou coller / modifier le texte du RFP :", value=default_rfp, height=220)
     launch = st.button("🚀 Lancer Secure Bid Squad", type="primary", use_container_width=True)
 
 if uploaded_file is not None:
